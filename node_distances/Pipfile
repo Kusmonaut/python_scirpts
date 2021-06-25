@@ -1,0 +1,23 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+
+[packages]
+netaddr = "==0.7.19"
+paho-mqtt = "==1.5.0"
+sklearn = "==0.0"
+python-dotenv = "==0.11.0"
+matplotlib="*"
+requests = "==2.23.0"
+libscrc = "*"
+intranav-sdk = {path = "./intranav-sdk-0.0.51.tar.gz"}
+numpy = "*"
+
+[requires]
+python_version = "3.6"
+
+[pipenv]
+allow_prereleases = true

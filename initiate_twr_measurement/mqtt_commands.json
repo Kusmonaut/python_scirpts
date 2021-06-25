@@ -1,0 +1,31 @@
+{
+  "initiator_141c2d":
+  {
+    "cmd": "twr_initiator",
+    "initiator": "01aa2145ca141c2d",
+    "responder": "01aa2145cae48a04",
+    "num_twr_ranges": 6
+  },
+
+  "responder_e48a04":
+  {
+    "cmd": "twr_responder",
+    "initiator": "01aa2145ca141c2d",
+    "responder": "01aa2145cae48a04"
+  },
+
+  "initiator_e48a04":
+  {
+    "cmd": "twr_initiator",
+    "initiator": "01aa2145cae48a04",
+    "responder": "01aa2145ca141c2d",
+    "num_twr_ranges": 6
+  },
+
+  "responder_141c2d":
+  {
+    "cmd": "twr_responder",
+    "initiator": "01aa2145cae48a04",
+    "responder": "01aa2145ca141c2d"
+  }
+}
