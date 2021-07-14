@@ -9,13 +9,13 @@ black = "*"
 rope = "*"
 
 [packages]
-shapely = "*"
+scipy = "*"
+sklearn = "*"
 python-dotenv = "*"
 requests = "*"
 matplotlib = "*"
 intranav-sdk = {path = "./intranav-sdk-0.0.51.tar.gz"}
 PyQt5 = "*"
-scipy = "*"
 numpy = "*"
 
 [requires]

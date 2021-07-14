@@ -10,13 +10,10 @@ rope = "*"
 
 [packages]
 paho-mqtt = "*"
+sklearn = "*"
 scipy = "*"
 python-dotenv = "*"
-matplotlib = "*"
-yellowbrick = "*"
-sklearn = "*"
-kneed = "*"
-statsmodels = "*"
+numpy = "*"
 
 [requires]
 python_version = "3.6"

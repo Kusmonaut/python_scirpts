@@ -10,14 +10,16 @@ import time
 import sys
 import numpy as np
 import csv
+import copy
 
-from shapely import geometry
 from scipy.spatial import distance
 from scipy.optimize import least_squares
 from PyQt5 import uic, QtGui
 from PyQt5.Qt import Qt, QStandardItem
 from PyQt5.QtWidgets import QApplication, QMainWindow, QDialog
 from requests import RequestException, Session
+from sklearn.neighbors import KernelDensity
+from scipy.signal import argrelextrema
 
 from config import *
 from multilaterate import get_loci
@@ -35,6 +37,8 @@ TAG_REPORT = 0
 SCATTER_NODES = {}
 X_AXE = []
 Y_AXE = []
+REF_NODE = {}
+RING_BUFFER_MOVEMENT = 100
 
 class Window(QMainWindow, QDialog):
 
@@ -294,13 +298,130 @@ class Window(QMainWindow, QDialog):
         self.UnfilteredPlot.canvas.draw()
         self.FilteredPlot.canvas.draw()
 
-    def filter_or_correcting_positioningNodes():
-        pass
-        # SCATTER_NODES['positioningNodes']['loci_corrected']['pos']['x'] = []
-        # SCATTER_NODES['positioningNodes']['loci_corrected']['pos']['y'] = []
-        # SCATTER_NODES['positioningNodes']['tdoa_corrected'] = []
-        # SCATTER_NODES['positioningNodes']['filtered_pos']['x'] = []
-        # SCATTER_NODES['positioningNodes']['filtered_pos']['y'] = []
+    def filter_or_correcting_positioningNodes(self):
+        global REF_NODE
+
+        local_ref = SCATTER_NODES['referenceNode']['uid'][0]
+        
+        if SCATTER_NODES['referenceNode']['uid'][0] not in REF_NODE:
+            REF_NODE[SCATTER_NODES['referenceNode']['uid'][0]] = {}
+
+
+        # add measuremnt to refnode
+        for tdoa, uid in zip(SCATTER_NODES['positioningNodes']['tdoa'], SCATTER_NODES['positioningNodes']['uid']):
+
+            # if list doesnt exist create list
+            if uid not in REF_NODE[local_ref]:
+                REF_NODE[local_ref][uid] = []
+            
+            # if add or remove data from ringbuffer Size of RING_BUFFER
+            if len(REF_NODE[local_ref][uid]) < RING_BUFFER_MOVEMENT:
+                REF_NODE[local_ref][uid].append(tdoa)
+            else:
+                REF_NODE[local_ref][uid].pop(0)
+                REF_NODE[local_ref][uid].append(tdoa)
+                        
+        SCATTER_NODES['positioningNodes_corrected']['uid'] = copy.copy(SCATTER_NODES['positioningNodes']['uid'])
+        SCATTER_NODES['positioningNodes_corrected']['name'] = copy.copy(SCATTER_NODES['positioningNodes']['name'])
+        SCATTER_NODES['positioningNodes_corrected']['colorCode'] = copy.copy(SCATTER_NODES['positioningNodes']['colorCode'])
+        SCATTER_NODES['positioningNodes_corrected']['pos']['x'] = copy.copy(SCATTER_NODES['positioningNodes']['pos']['x'])
+        SCATTER_NODES['positioningNodes_corrected']['pos']['y'] = copy.copy(SCATTER_NODES['positioningNodes']['pos']['y'])
+        SCATTER_NODES['positioningNodes_corrected']['tdoa'] = copy.copy(SCATTER_NODES['positioningNodes']['tdoa'])
+
+        filter_uid = []
+
+        for ref_uid in REF_NODE:
+
+            for buffer_uid in REF_NODE[ref_uid]:
+
+                if len(REF_NODE[ref_uid][buffer_uid]) <= 1:
+                    continue
+
+                data = np.array([REF_NODE[ref_uid][buffer_uid]]).T
+
+                kde = KernelDensity(kernel='gaussian', bandwidth=8e-10).fit(data)
+
+                X_plot = np.linspace(data.min()-1e-8, data.max()+1e-8, 300)[:, np.newaxis]
+                
+                log_dens = kde.score_samples(X_plot)
+                
+                idx = {}
+
+                idx['max'] = argrelextrema(log_dens, np.greater)[0]
+                idx['min'] = argrelextrema(log_dens, np.less)[0]
+
+                cluster_sets = []
+
+                anti_modes = X_plot[np.sort(idx['min'])[::-1]]
+                modes = X_plot[np.sort(idx['max'])[::-1]]
+
+                if len(anti_modes) > 0:
+                    for splitter in anti_modes:
+                        dataset_index = data > splitter
+                        cluster_sets.append(data[dataset_index])
+                        data = data[np.invert(dataset_index)]
+
+                    dataset_index = data <= X_plot[idx['min'][0]]
+                    cluster_sets.append(data[dataset_index])
+
+                if FILTER_TDOA:
+                    tdoa = self.find_cluster(modes, cluster_sets, REF_NODE[ref_uid][buffer_uid][-1])
+                    if REF_NODE[ref_uid][buffer_uid][-1] != tdoa or tdoa is None:
+                        filter_uid.append(buffer_uid)
+                else:
+                    tdoa = self.find_cluster(modes, cluster_sets, REF_NODE[ref_uid][buffer_uid][-1])
+                    if tdoa is None:
+                        filter_uid.append(buffer_uid)
+                    else:
+                        try:
+                            index = SCATTER_NODES['positioningNodes_corrected']['uid'].index(buffer_uid)
+                            SCATTER_NODES['positioningNodes_corrected']['tdoa'][index] = tdoa
+                        except:
+                            pass
+
+
+                # self.find_cluster_old(idx, cluster_sets, X_plot, ref_uid, buffer_uid)
+
+        for uid in filter_uid:
+            index = SCATTER_NODES['positioningNodes_corrected']['uid'].index(uid)
+
+            SCATTER_NODES['positioningNodes_corrected']['uid'].pop(index)
+            SCATTER_NODES['positioningNodes_corrected']['name'].pop(index)
+            SCATTER_NODES['positioningNodes_corrected']['colorCode'].pop(index)
+            SCATTER_NODES['positioningNodes_corrected']['pos']['x'].pop(index)
+            SCATTER_NODES['positioningNodes_corrected']['pos']['y'].pop(index)
+            SCATTER_NODES['positioningNodes_corrected']['tdoa'].pop(index)
+
+    
+    def find_cluster(self, modes, cluster_sets, tdoa):
+        # check that clusters exist
+        if len(modes) > 0 and len(cluster_sets) > 0:
+            
+            # calc standard deviation of the first cluster
+            stdeviation = np.std(cluster_sets[0])
+
+            # check if the tdoa measurement is in the 5th standard deviation
+            if (stdeviation * 5) + modes[0] > tdoa and tdoa > (stdeviation * -5) + modes[0]:
+
+                # if there are more modes go one instance deeper and retry
+                if len(modes[1:]) > 0 and len(cluster_sets[1:]) > 0:
+
+                    # shift the tdoa value to the second cluster
+                    tdoa2 = tdoa - (modes[0][0] - modes[1][0])
+
+                    tdoa2 = self.find_cluster( modes=modes[1:], cluster_sets=cluster_sets[1:], tdoa=tdoa2 )
+                    if tdoa2 != None:
+                        return tdoa2
+                    else:
+                        return tdoa
+                else:
+                    return tdoa
+            else:
+                if len(modes[1:]) > 0 and len(cluster_sets[1:]) > 0:
+                    return self.find_cluster( modes=modes[1:], cluster_sets=cluster_sets[1:], tdoa=tdoa )
+                else:
+                    return None
+        return tdoa
 
     def update_hyperbola(self):
         global SCATTER_NODES
@@ -445,32 +566,6 @@ class Window(QMainWindow, QDialog):
                             SCATTER_NODES['positioningNodes']['colorCode'].append(COLOR_PALET[len(SCATTER_NODES['positioningNodes']['colorCode'])])
                             SCATTER_NODES['positioningNodes']['scatterType'].append(node['nodeType'])
 
-                            if [tdoa['uid'] == '01aa2145caf20e92' and tdoa['tdoa'] == 0 for tdoa in TAG_REPORT['tdoadebug']]:
-                                if tdoa_node['uid'] == '01aa2145caf203b4' and tdoa_node['tdoa'] > 1e-8:
-                                    if not FILTER_TDOA:
-                                        SCATTER_NODES['positioningNodes_corrected']['name'].append(node['name'])
-                                        SCATTER_NODES['positioningNodes_corrected']['uid'].append(node['uid'])
-                                        SCATTER_NODES['positioningNodes_corrected']['tdoa'].append(tdoa_node['tdoa'] - 5e-9)
-                                        SCATTER_NODES['positioningNodes_corrected']['pos']['x'].append(float(node['x']))
-                                        SCATTER_NODES['positioningNodes_corrected']['pos']['y'].append(float(node['y']))
-                                        SCATTER_NODES['positioningNodes_corrected']['colorCode'].append(COLOR_PALET[len(SCATTER_NODES['positioningNodes']['colorCode'])-1])
-                                        SCATTER_NODES['positioningNodes_corrected']['scatterType'].append(node['nodeType'])
-                                else:
-                                    SCATTER_NODES['positioningNodes_corrected']['name'].append(node['name'])
-                                    SCATTER_NODES['positioningNodes_corrected']['uid'].append(node['uid'])
-                                    SCATTER_NODES['positioningNodes_corrected']['tdoa'].append(tdoa_node['tdoa'])
-                                    SCATTER_NODES['positioningNodes_corrected']['pos']['x'].append(float(node['x']))
-                                    SCATTER_NODES['positioningNodes_corrected']['pos']['y'].append(float(node['y']))
-                                    SCATTER_NODES['positioningNodes_corrected']['colorCode'].append(COLOR_PALET[len(SCATTER_NODES['positioningNodes']['colorCode'])-1])
-                                    SCATTER_NODES['positioningNodes_corrected']['scatterType'].append(node['nodeType'])
-                            else:
-                                SCATTER_NODES['positioningNodes_corrected']['name'].append(node['name'])
-                                SCATTER_NODES['positioningNodes_corrected']['uid'].append(node['uid'])
-                                SCATTER_NODES['positioningNodes_corrected']['tdoa'].append(tdoa_node['tdoa'])
-                                SCATTER_NODES['positioningNodes_corrected']['pos']['x'].append(float(node['x']))
-                                SCATTER_NODES['positioningNodes_corrected']['pos']['y'].append(float(node['y']))
-                                SCATTER_NODES['positioningNodes_corrected']['colorCode'].append(COLOR_PALET[len(SCATTER_NODES['positioningNodes']['colorCode'])-1])
-                                SCATTER_NODES['positioningNodes_corrected']['scatterType'].append(node['nodeType'])
                     else:
                         #save the positions of all none positioning nodes
                         SCATTER_NODES['nonePositioningNodes']['pos']['x'].append(float(node['x']))
@@ -494,7 +589,7 @@ class Window(QMainWindow, QDialog):
                     SCATTER_NODES['real_tag']['pos']['x'].append(item['raw_position']['x'])
                     SCATTER_NODES['real_tag']['pos']['y'].append(item['raw_position']['y'])
 
-        # self.filter_or_correcting_positioningNodes()
+        self.filter_or_correcting_positioningNodes()
         self.update_hyperbola()
         self.update_locationCalc()
         self.update_canvas()
@@ -646,6 +741,17 @@ def nodes_from_list(name):
     return floors
 
 if __name__ == "__main__":
+
+    # multilaterator = MultiLateration()
+    # cleSolver3D = False
+    # nodeCoordinates_corrected = np.mat([[-0.001, 0.182],
+    #                                     [8.443, 8.696],
+    #                                     [-2.703, 2.879],
+    #                                     [6.102, 11.672]])
+    # tdoaMeasurement_corrected = np.array([[0, 6.479690561889129e-09, -9.647434850990066e-09 , 9.693268410160272e-10, ]])
+    
+    # multilaterator.setNodes(nodeCoordinates_corrected, cleSolver3D)
+    # result_corrected = multilaterator.multilaterate(tdoaMeasurement_corrected, cleSolver3D) * 1000
 
     api = apiInterface()
 

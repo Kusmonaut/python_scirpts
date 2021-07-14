@@ -19,12 +19,15 @@ from scipy.spatial.distance import cdist
 import kneed
 import statistics
 
-from scipy.stats import gaussian_kde
+import statsmodels.api as sm
+from scipy.stats import gaussian_kde, mode, norm
 from sklearn.neighbors import KernelDensity
 from sklearn.cluster import KMeans
 from yellowbrick.cluster import KElbowVisualizer, KElbow
 from yellowbrick.cluster.elbow import kelbow_visualizer
 from sklearn.metrics import silhouette_samples, silhouette_score, calinski_harabasz_score, davies_bouldin_score
+from scipy.signal import argrelextrema
+from sklearn.cluster import AgglomerativeClustering
 
 
 TDOA_REPORTS = os.getenv('TDOA_REPORTS', 'results/lufthansa24-04/asset_22_floor_2.json')
@@ -89,22 +92,64 @@ for uid in tags:
                     else:
                         measured_data[tdoa_message['uid']] = [tdoa_message['tdoa']]
 
-# for uid in measured_data:
-uid = '01aa2145caf203b4'
-liste = []
-for i, value in enumerate(measured_data[uid]):
+for uid in measured_data:
 
-    liste.append(value)
+    liste = []
+    uid = '01aa2145caf203b4'
 
-    data = np.array([liste]).T
+    for i, value in enumerate(measured_data[uid]):
 
-    kde = KernelDensity(kernel='gaussian', bandwidth=5e-10).fit(data)
+        if len(liste) == 0:
+            liste.append(value)
+            continue
 
-    if (i % 50) == 0:
-        lw = 2
-        X_plot = np.linspace(data.min()-3e-9, data.max()+3e-9, 1000)[:, np.newaxis]
+        data = np.array([liste]).T
+
+        kde = KernelDensity(kernel='gaussian', bandwidth=8e-10).fit(data)
+
+        X_plot = np.linspace(data.min()-1e-8, data.max()+1e-8, 300)[:, np.newaxis]
+
         log_dens = kde.score_samples(X_plot)
-        plt.plot(X_plot[:, 0], np.exp(log_dens), lw=lw,
-                linestyle='-', label="kernel = 'gaussian'")
-        test = X_plot[:,0]
-        plt.show()
+
+        idx = {}
+
+        idx['max'] = argrelextrema(log_dens, np.greater)[0]
+        idx['min'] = argrelextrema(log_dens, np.less)[0]
+
+        datasets = []
+
+        if len(idx['min']) > 0:
+            for splitter in idx['min']:
+                dataset_index = data <= X_plot[splitter]
+                datasets.append(data[dataset_index])
+                data = data[np.invert(dataset_index)]
+
+            dataset_index = data > X_plot[idx['min'][-1]]
+            datasets.append(data[dataset_index])
+                
+        for subset, subset_mode in zip(datasets, idx['max']):
+            stdeviation = np.std(subset)
+            if (stdeviation * 5) + X_plot[subset_mode] > value and value > (stdeviation * -5) + X_plot[subset_mode]:
+                pass
+
+        liste.append(value)
+
+        if i % 100 == 0:
+
+            if len(datasets) > 2:
+                for dataset in datasets:
+                    plt.hist(dataset, bins= 100)
+                    plt.show()
+
+            for m in idx['max']:
+                plt.axvline(X_plot[m], color='r')
+            
+            for m in idx['min']:
+                plt.axvline(X_plot[m])
+
+            lw = 2
+
+            plt.plot(X_plot[:, 0], np.exp(log_dens), lw=lw,
+                    linestyle='-', label="kernel = 'gaussian'")
+            test = X_plot[:,0]
+            plt.show()

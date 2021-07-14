@@ -1,7 +1,6 @@
 
 import os
 
-from shapely import geometry
 
 HTTP_TIMEOUT = 5.0
 DELTA_D = 10                  # delta of the duty factor
