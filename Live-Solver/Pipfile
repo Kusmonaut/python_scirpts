@@ -10,15 +10,13 @@ rope = "*"
 
 [packages]
 paho-mqtt = "*"
-python-dotenv = "*"
-requests = "*"
 matplotlib = "*"
 scipy = "*"
 sklearn = "*"
 numpy = "*"
 
 [requires]
-python_version = "3.8"
+python_version = "3.6"
 
 [pipenv]
 allow_prereleases = true
