@@ -5,11 +5,9 @@ name = "pypi"
 
 [packages]
 numpy = "*"
-PyQt5 = "*"
 matplotlib = "==3.4.0"
 
 [dev-packages]
-confluent-kafka = "*"
 
 [requires]
 python_version = "3.8"
