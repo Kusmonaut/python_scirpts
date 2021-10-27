@@ -196,12 +196,26 @@ class Window(QMainWindow, QDialog):
 
     def create_Nodes(self, position):
         node_positions = {}
+        i = 0
+   
+        for uid in self._floor:
+            for tdoadebug in position:
+                if 'raw_position' in tdoadebug:
+                    node_positions[TAG_ID] = {'x': tdoadebug['raw_position']['x']*1000, 'y': tdoadebug['raw_position']['y']*1000, 'color': 'b', 'marker': 'X'}
+                    continue
+            if tdoadebug['uid'] == uid:
+                node_positions[uid] = {'x': tdoadebug['x']*1000, 'y': tdoadebug['y']*1000, 'color': COLOR_PALET[i], 'marker': 's' if self._floor[uid]['nodeType'] == 'master' else 'o' }
+                i += 1
+                break
+
+
+
         for i, tdoadebug in enumerate(position):
             if 'raw_position' in tdoadebug:
                 node_positions[TAG_ID] = {'x': tdoadebug['raw_position']['x']*1000, 'y': tdoadebug['raw_position']['y']*1000, 'color': 'b', 'marker': 'X'}
                 continue
-            if (tdoadebug['uid'] == node['uid'] for node in self._floor):
-                node_positions[tdoadebug['uid']] = {'x': tdoadebug['x']*1000, 'y': tdoadebug['y']*1000, 'color': COLOR_PALET[i], 'marker': 's' if node['nodeType'] == 'master' else 'o' }
+            if (tdoadebug['uid'] == uid for uid in self._floor):
+                node_positions[tdoadebug['uid']] = {'x': tdoadebug['x']*1000, 'y': tdoadebug['y']*1000, 'color': COLOR_PALET[i], 'marker': 's' if self._floor[tdoadebug['uid']]['nodeType'] == 'master' else 'o' }
             else:
                 node_positions[tdoadebug['uid']] = {'x': tdoadebug['x']*1000, 'y': tdoadebug['y']*1000, 'color': 'g', 'marker': 'o' }
 
@@ -294,8 +308,8 @@ class apiInterface:
 
     def get_nodes(self):
 
-        floors = {}
-        s = Session()
+        floors:Dict[Dict[Any]] = {}
+        s:Session = Session()
 
         s.headers.update({"Authorization": "Api-Key {}".format(self._apitoken)})
 
@@ -315,8 +329,10 @@ class apiInterface:
 
         for node in nodes_request.json():
             n = self.parse_props(node.get("properties", []))
+            uid = n.pop('uid')
+
             if n is not None:
-                if "uid" in n and n["uid"] not in self._node_filter_list:
+                if uid not in self._node_filter_list:
                     n["name"] = node["name"]
                     n["id"] = node["id"]
                     n['x'] = int(n['x'])
@@ -324,10 +340,10 @@ class apiInterface:
                     n['z'] = int(n['z'])
 
                     floor = int(n.pop("floor"))
+
                     if floor not in floors:
-                        floors[floor] = [n]
-                    else:
-                        floors[floor].append(n)
+                        floors[floor] = {}
+                    floors[floor][uid] = n
         
         self._floorlist = floors
 
