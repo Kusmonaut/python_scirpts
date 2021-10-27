@@ -1,0 +1,25 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+intranav-sdk = {path = "./intranav-sdk-0.0.69.tar.gz"}
+numpy = "*"
+paho-mqtt = "*"
+libscrc = "1.7.1"
+matplotlib = "*"
+
+[dev-packages]
+pytest = "*"
+
+[requires]
+python_version = "3.8"
+
+[scripts]
+composer = "python main.py composer"
+filter = "python main.py filter"
+peacemaker = "python main.py peacemaker"
+solver = "python main.py solver"
+splitter = "python main.py splitter"
+sync = "python main.py sync"

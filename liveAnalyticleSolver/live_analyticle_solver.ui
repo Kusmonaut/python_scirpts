@@ -19,7 +19,7 @@
      <x>10</x>
      <y>10</y>
      <width>1311</width>
-     <height>881</height>
+     <height>1302</height>
     </rect>
    </property>
    <layout class="QGridLayout" name="gridLayout">
@@ -245,7 +245,7 @@
            </size>
           </property>
           <property name="plainText">
-           <string>0</string>
+           <string>2</string>
           </property>
          </widget>
         </item>
@@ -294,7 +294,7 @@
            </size>
           </property>
           <property name="plainText">
-           <string>0</string>
+           <string>4</string>
           </property>
          </widget>
         </item>
@@ -326,7 +326,7 @@
       <property name="minimumSize">
        <size>
         <width>1000</width>
-        <height>0</height>
+        <height>1300</height>
        </size>
       </property>
      </widget>
