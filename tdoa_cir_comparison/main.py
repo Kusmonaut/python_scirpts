@@ -22,10 +22,32 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QDialog, QStyleFactory
 from requests import RequestException, Session
 from paho.mqtt.client import Client as MQTTClient, MQTTMessage
 
-from config import *
 from decode import *
 from multilaterate import get_loci
 from multilateration import *
+
+from config import (
+    HTTP_TIMEOUT,
+    COLOR_PALET,
+    API_BASE,
+    API_TOKEN,
+    NODE_FILTER,
+    API_ONLINE,
+    X_MIN,
+    X_MAX,
+    Y_MIN,
+    Y_MAX,
+    SPEED_OF_LIGHT,
+    DELTA_D,
+    MAX_D,
+    MQTT_USER,
+    MQTT_PASS,
+    MQTT_HOST,
+    MQTT_PORT,
+    FLOOR_ID,
+    TAG_ID,
+)
+
 from intranav.proto import Decoder
 from intranav.proto.inav_le_pb2 import BlinkCollection, ReportContainer
 from intranav.constants.devices import (
@@ -36,21 +58,6 @@ from intranav.constants.devices import (
     NODE_TYPE_PROP_ID,
     NODE_FLOOR_PROP_ID
 )
-
-MQTT_USER = "qt_services"
-MQTT_PASS = "VXDY6KeqyTkJ5z8mqZm8"
-MQTT_HOST = "192.168.1.99"
-MQTT_PORT = 1883
-TAG_ID = "05a260c947c41299"
-SPEED_OF_LIGHT = 299702547000  # speed of light in m/s
-DELTA_D = 100                  # delta of the duty factor
-MAX_D = 60000                  # length of the hyperbula in mm
-FLOOR_NUMBER = 4
-COLOR_PALET = ['#1f77b4', '#ff7f0e', '#5cb02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf', '#23fe32', '#ffe325', '#0432fe', '#eb0043', '#f35d3f']
-X_MIN = -6780
-X_MAX = 2150
-Y_MIN = 6550
-Y_MAX = 15630
 
 tag_position: Dict[str ,Any] = defaultdict(dict)
 decoders: Dict[int, Decoder] = defaultdict(Decoder)
@@ -69,7 +76,7 @@ class Window(QMainWindow, QDialog):
         mqtt_client.connect(MQTT_HOST, MQTT_PORT)
         mqtt_client.loop_start()
 
-        self._floor = floors[FLOOR_NUMBER]
+        self._floor = floors[FLOOR_ID]
 
         self.setWindowTitle(f"Tag Analayse for tag_id: {tag_id}")
 
@@ -83,11 +90,14 @@ class Window(QMainWindow, QDialog):
         self.MplWidget_cir.canvas.axes.clear()
 
         if 'tdoadebug' in tag_position[position]:
-            locis = self.create_hyperbola(tag_position[position]['tdoadebug'])
+            hyperbolas = self.create_hyperbola(tag_position[position]['tdoadebug'])
+
+            if not hyperbolas:
+                logging.warning("hyperbola creation failed")
             
             node_positions = self.create_Nodes(tag_position[position]['tdoadebug'])
             
-            self.draw_on_tdoa_canvas(locis, node_positions)
+            self.draw_on_tdoa_canvas(hyperbolas, node_positions)
         
         if 'blink_collection' in tag_position[position]:
 
@@ -169,19 +179,18 @@ class Window(QMainWindow, QDialog):
         self.MplWidget_cir.canvas.axes.legend()
         self.MplWidget_cir.canvas.draw()
 
-    def draw_on_tdoa_canvas(self, locis, node_positions):
+    def draw_on_tdoa_canvas(self, hyperbolas, node_positions):
 
         self.MplWidget_tdoa.canvas.axes.clear()
 
         self.MplWidget_tdoa.canvas.axes.set_xlim(X_MIN, X_MAX)
         self.MplWidget_tdoa.canvas.axes.set_ylim(Y_MIN, Y_MAX)
 
-        for loci in locis:
-            self.MplWidget_tdoa.canvas.axes.plot(loci[0], loci[1])
+        for uid in hyperbolas:
+            self.MplWidget_tdoa.canvas.axes.plot(hyperbolas[uid]['loci'][0], hyperbolas[uid]['loci'][1], color=hyperbolas[uid]['color'])
 
         for uid in node_positions:
-            test = node_positions[uid]['marker'] if node_positions[uid]['marker'] else 'o'
-            self.MplWidget_tdoa.canvas.axes.scatter(node_positions[uid]['x'], node_positions[uid]['y'], zorder=10, s=100, marker=node_positions[uid]['marker'] if node_positions[uid]['marker'] else 'o' )
+            self.MplWidget_tdoa.canvas.axes.scatter(node_positions[uid]['x'], node_positions[uid]['y'], zorder=10, s=100, color=node_positions[uid]['color'] , marker=node_positions[uid]['marker'] if node_positions[uid]['marker'] else 'o' )
 
         for node in node_positions:
             self.MplWidget_tdoa.canvas.axes.annotate(
@@ -196,50 +205,58 @@ class Window(QMainWindow, QDialog):
 
     def create_Nodes(self, position):
         node_positions = {}
-        i = 0
-   
-        for uid in self._floor:
-            for tdoadebug in position:
-                if 'raw_position' in tdoadebug:
-                    node_positions[TAG_ID] = {'x': tdoadebug['raw_position']['x']*1000, 'y': tdoadebug['raw_position']['y']*1000, 'color': 'b', 'marker': 'X'}
-                    continue
-            if tdoadebug['uid'] == uid:
-                node_positions[uid] = {'x': tdoadebug['x']*1000, 'y': tdoadebug['y']*1000, 'color': COLOR_PALET[i], 'marker': 's' if self._floor[uid]['nodeType'] == 'master' else 'o' }
-                i += 1
-                break
+        color_index = 0
 
-
-
-        for i, tdoadebug in enumerate(position):
-            if 'raw_position' in tdoadebug:
-                node_positions[TAG_ID] = {'x': tdoadebug['raw_position']['x']*1000, 'y': tdoadebug['raw_position']['y']*1000, 'color': 'b', 'marker': 'X'}
+        for uid in position:
+            if uid == 'raw_position':
                 continue
-            if (tdoadebug['uid'] == uid for uid in self._floor):
-                node_positions[tdoadebug['uid']] = {'x': tdoadebug['x']*1000, 'y': tdoadebug['y']*1000, 'color': COLOR_PALET[i], 'marker': 's' if self._floor[tdoadebug['uid']]['nodeType'] == 'master' else 'o' }
+            if self._floor[uid]['nodeType'] == 'primary':
+                node_positions[uid] = {'x': position[uid]['x']*1000, 'y': position[uid]['y']*1000, 'color': 'r', 'marker': 's' }
             else:
-                node_positions[tdoadebug['uid']] = {'x': tdoadebug['x']*1000, 'y': tdoadebug['y']*1000, 'color': 'g', 'marker': 'o' }
-
+                node_positions[uid] = {'x': position[uid]['x']*1000, 'y': position[uid]['y']*1000, 'color': COLOR_PALET[color_index], 'marker': 'o' }
+                color_index += 1
+            
+        for uid in self._floor:
+            if uid not in position:
+                node_positions[uid] = {'x': self._floor[uid]['x'], 'y': self._floor[uid]['y'], 'color': 'g', 'marker': 'o' }
+        
+        node_positions[TAG_ID] = {'x': position['raw_position']['x']*1000, 'y': position['raw_position']['y']*1000, 'color': 'b', 'marker': 'X'}
+   
         return node_positions
 
     def create_hyperbola(self, position):
         
         tdoa = []
         node_position = []
+        hyperbolas = {}
+        color_index = 0
 
-        for tdoadebug in position:
-            if 'raw_position' in tdoadebug:
+        for uid in position:
+            if 'raw_position' in uid:
                 continue
-            if (tdoadebug['tdoa'] != 0.0
-                    or len(tdoa) == 0):
-                tdoa.append(tdoadebug['tdoa'])
-                node_position.append(np.array([tdoadebug['x']*1000, tdoadebug['y']*1000]))
+            if position[uid]['tdoa'] != 0.0:
+                tdoa.append(position[uid]['tdoa'])
+                node_position.append(np.array([position[uid]['x']*1000, position[uid]['y']*1000]))
+                # add color to return value
+                hyperbolas[uid] = { 'color': COLOR_PALET[color_index] }
+                color_index += 1
             else:
-                tdoa.insert(0, tdoadebug['tdoa'])
-                node_position.insert(0, np.array([tdoadebug['x']*1000, tdoadebug['y']*1000]))
+                if len(tdoa) > 0:
+                    tdoa.insert(0, position[uid]['tdoa'])
+                    node_position.insert(0, np.array([position[uid]['x']*1000, position[uid]['y']*1000]))
+                else:
+                    tdoa.append(position[uid]['tdoa'])
+                    node_position.insert(0, np.array([position[uid]['x']*1000, position[uid]['y']*1000]))
 
         locis = get_loci(np.array(tdoa), np.array(node_position), SPEED_OF_LIGHT, DELTA_D, MAX_D)
+        
+        if len(locis) != len(hyperbolas):
+            return None
 
-        return locis
+        for uid, loci in zip(hyperbolas, locis):
+            hyperbolas[uid].update({'loci': loci})
+
+        return hyperbolas
 
     def update_horizontal_slider(self, dict_length: int):
         self.horizontalSlider.maximum = dict_length-1
@@ -250,8 +267,15 @@ class Window(QMainWindow, QDialog):
     def on_tag_position(self, client: MQTTClient, userdata, message: MQTTMessage):
         global tag_position
         msg = json.loads(message.payload)
+        tdoa_debug = {}
+
+        for tdoa in msg["tdoadebug"]:
+            if 'raw_position' in tdoa:
+                tdoa_debug.update(tdoa)
+            else:
+                tdoa_debug[tdoa.pop('uid')] = tdoa
         
-        tag_position[msg["blink_count"]].update({ 'tdoadebug': msg["tdoadebug"] })
+        tag_position[msg["blink_count"]].update({ 'tdoadebug': tdoa_debug })
        
         self.update_horizontal_slider(len(tag_position))
 
@@ -329,6 +353,9 @@ class apiInterface:
 
         for node in nodes_request.json():
             n = self.parse_props(node.get("properties", []))
+            if not n:
+                continue
+
             uid = n.pop('uid')
 
             if n is not None:
@@ -401,8 +428,6 @@ if __name__ == "__main__":
 
     if API_ONLINE:
         floors = api.get_nodes()
-    else:
-        floors = nodes_from_list(name = NODE_FROM_LIST)
 
     app = QApplication(sys.argv)
     window = Window(mqtt_client, TAG_ID, floors)
