@@ -84,6 +84,9 @@ class Window(QMainWindow, QDialog):
 
     def update_tag_position(self):
 
+        node_positions: Dict[str, Any] = {}
+        node_diags: Dict[str, Any] = {}
+
         position = list(tag_position)[self.horizontalSlider.value()]
 
         self.MplWidget_tdoa.canvas.axes.clear()
@@ -94,6 +97,7 @@ class Window(QMainWindow, QDialog):
 
             if not hyperbolas:
                 logging.warning("hyperbola creation failed")
+                return
             
             node_positions = self.create_Nodes(tag_position[position]['tdoadebug'])
             
@@ -103,15 +107,31 @@ class Window(QMainWindow, QDialog):
 
             node_diags = self.create_diagnostics(tag_position[position]['blink_collection'])
 
-            self.draw_on_diag_canvas(node_diags)
+            if not node_diags:
+                logging.warning("nodes diag creation failed")
 
+            # 
+            if node_positions:
+                self.color_matching(node_positions, node_diags)
+
+                self.draw_on_diag_canvas(node_diags)
+
+    def color_matching(self, node_positions, node_diags):
+        for uid in node_positions:
+            if uid != TAG_ID:
+                if uid in node_diags:
+                    node_diags[uid].update({'color': node_positions[uid]['color']})
+        pass
+        # for uid in node_diags:
+        #     if uid not in node_positions:
+        #         node_diags[uid].update({'color': 'g'})
 
     def create_diagnostics(self, blink_collection):
         
         nodes: Dict[int, Any] = {}
 
         for report in blink_collection.blink_reports:
-
+            uid = "{:016x}".format(report)
             diagnostics = decode_diagnostics(
                 blink_collection.blink_reports[report].blink_report.diagnostics.diagnostics,
                 report,
@@ -122,33 +142,33 @@ class Window(QMainWindow, QDialog):
                 logging.warning(f"length of diagnostics for node does not match [node_id: {report:016x}]")
                 continue
 
-            nodes[report] = {"tag_id": blink_collection.blink_reports[report].blink_report.tag_id}
-            nodes[report]["diag"] = diagnostics
+            nodes[uid] = {"tag_id": "{:016x}".format(blink_collection.blink_reports[report].blink_report.tag_id)}
+            nodes[uid]["diag"] = diagnostics
 
             delta_peak = calc_peak_difference(diagnostics)
 
             if delta_peak:
-                nodes[report]["delta"] = delta_peak
+                nodes[uid]["delta"] = delta_peak
 
             pwr_level = calc_power_level(diagnostics)
 
             if pwr_level:
-                nodes[report]["pwr_level"] = pwr_level
+                nodes[uid]["pwr_level"] = pwr_level
 
-            pwr_level_delta = calc_power_level_delta(nodes[report]["pwr_level"])
+            pwr_level_delta = calc_power_level_delta(nodes[uid]["pwr_level"])
 
             if pwr_level_delta:
-                nodes[report]["pwr_level"]["delta"] = pwr_level_delta
+                nodes[uid]["pwr_level"]["delta"] = pwr_level_delta
 
         if len(nodes) == 0:
             logging.warning(
                 f"No node can be selected from blink reports of size [ len blink_reports: {len(blink_collection.blink_reports)}]"
             )
-            return None, None
+            return None
 
         for node in nodes:
             logging.info(
-                f"node_id: {hex(node)}, fp_power: {nodes[node]['pwr_level']['fp_power']}, rx_power: {nodes[node]['pwr_level']['rx_power']}, fp_index: {nodes[node]['diag']['fp_index']}"
+                f"node_id: {node}, fp_power: {nodes[node]['pwr_level']['fp_power']}, rx_power: {nodes[node]['pwr_level']['rx_power']}, fp_index: {nodes[node]['diag']['fp_index']}"
             )
             if nodes[node]["delta"] <= 3.3:
                 nodes[node]["prNlos"] = 0
@@ -157,9 +177,10 @@ class Window(QMainWindow, QDialog):
             else:
                 nodes[node]["prNlos"] = 1
 
+        node_uid = int(list(nodes.keys())[0], 16)
         node_id = get_best_node(
             dict((node, nodes[node]["prNlos"]) for node in nodes),
-            blink_collection.blink_reports[list(nodes.keys())[0]].blink_report.tag_id,
+            "{:016x}".format(blink_collection.blink_reports[node_uid].blink_report.tag_id),
         )
 
         return nodes
@@ -167,12 +188,12 @@ class Window(QMainWindow, QDialog):
     def draw_on_diag_canvas(self,node_diags):
 
         for i, node in enumerate(node_diags):
-            self.MplWidget_cir.canvas.axes.title.set_text("tag_ID : " + str(hex(node_diags[node]['tag_id'])))
-            self.MplWidget_cir.canvas.axes.plot(node_diags[node]['diag']['cir_amplitude'], label=str(hex(node)), linestyle = '-' if node_diags[node]['prNlos'] < 1 else '--')
-            self.MplWidget_cir.canvas.axes.axvline(x = node_diags[node]['diag']['pp_index'] - int(node_diags[node]['diag']['fp_index']) + 10, color='C'+str(i), linestyle='-.')
-            self.MplWidget_cir.canvas.axes.scatter(y = node_diags[node]['diag']['fp_ampl3'], x = 11, marker='x', color='C'+str(i))
-            self.MplWidget_cir.canvas.axes.scatter(y = node_diags[node]['diag']['fp_ampl2'], x = 12, marker='x', color='C'+str(i))
-            self.MplWidget_cir.canvas.axes.scatter(y = node_diags[node]['diag']['fp_ampl1'], x = 13, marker='x', color='C'+str(i))
+            self.MplWidget_cir.canvas.axes.title.set_text("tag_ID : " + node_diags[node]['tag_id'])
+            self.MplWidget_cir.canvas.axes.plot(node_diags[node]['diag']['cir_amplitude'], label=node, color=node_diags[node]['color'], linestyle = '-' if node_diags[node]['prNlos'] < 1 else '--')
+            self.MplWidget_cir.canvas.axes.axvline(x = node_diags[node]['diag']['pp_index'] - int(node_diags[node]['diag']['fp_index']) + 10, color=node_diags[node]['color'], linestyle='-.')
+            self.MplWidget_cir.canvas.axes.scatter(y = node_diags[node]['diag']['fp_ampl3'], x = 11, marker='x', color=node_diags[node]['color'])
+            self.MplWidget_cir.canvas.axes.scatter(y = node_diags[node]['diag']['fp_ampl2'], x = 12, marker='x', color=node_diags[node]['color'])
+            self.MplWidget_cir.canvas.axes.scatter(y = node_diags[node]['diag']['fp_ampl1'], x = 13, marker='x', color=node_diags[node]['color'])
         self.MplWidget_cir.canvas.axes.yaxis.label.set_text('Channel Impulse Response Amplitude')
         self.MplWidget_cir.canvas.axes.xaxis.label.set_text('Sample Index')
         self.MplWidget_cir.canvas.axes.grid(True)

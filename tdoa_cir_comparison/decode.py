@@ -142,9 +142,9 @@ def get_best_node(node_quality, tag_id):
     nodes = list(sorted_nodes.keys())[:]
 
     for n in nodes:
-        logging.info(f"node_id: {n:016x}, quality_index: {sorted_nodes[n]}")
+        logging.info(f"node_id: {n}, quality_index: {sorted_nodes[n]}")
 
-    logging.debug(f"tag_id : {tag_id:016x}")
+    logging.debug(f"tag_id : {tag_id}")
 
     # return the node with the smalest delta
     return list(sorted_nodes.keys())[0]
