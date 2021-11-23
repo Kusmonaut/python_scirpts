@@ -46,81 +46,57 @@ class Window(QMainWindow, QDialog):
         self.y22 = 0
         self.y23 = 0
         self.y24 = 0
-
-
-        self.horizontalSlider_x_2.valueChanged.connect(self.sliderChanged)
-        self.horizontalSlider_y_2.valueChanged.connect(self.sliderChanged)
-        self.horizontalSlider_x_3.valueChanged.connect(self.sliderChanged)
-        self.horizontalSlider_y_3.valueChanged.connect(self.sliderChanged)
-        self.horizontalSlider_c_1.valueChanged.connect(self.sliderChanged)
-        self.horizontalSlider_c_2.valueChanged.connect(self.sliderChanged)
-
-        self.plainTextEdit_x_2.textChanged.connect(self.textChanged)
-        self.plainTextEdit_y_2.textChanged.connect(self.textChanged)
-        self.plainTextEdit_x_3.textChanged.connect(self.textChanged)
-        self.plainTextEdit_y_3.textChanged.connect(self.textChanged)
-        self.plainTextEdit_c_1.textChanged.connect(self.textChanged)
-        self.plainTextEdit_c_2.textChanged.connect(self.textChanged)
-
-    def sliderChanged(self):
-
-        self.plainTextEdit_x_2.textChanged.disconnect()
-        self.plainTextEdit_y_2.textChanged.disconnect()
-        self.plainTextEdit_x_3.textChanged.disconnect()
-        self.plainTextEdit_y_3.textChanged.disconnect()
-        self.plainTextEdit_c_1.textChanged.disconnect()
-        self.plainTextEdit_c_2.textChanged.disconnect()
-
-        self.plainTextEdit_x_2.setPlainText(str(self.horizontalSlider_x_2.value()))
-        self.plainTextEdit_y_2.setPlainText(str(self.horizontalSlider_y_2.value()))
-        self.plainTextEdit_x_3.setPlainText(str(self.horizontalSlider_x_3.value()))
-        self.plainTextEdit_y_3.setPlainText(str(self.horizontalSlider_y_3.value()))
-        self.plainTextEdit_c_1.setPlainText(str(self.horizontalSlider_c_1.value()))
-        self.plainTextEdit_c_2.setPlainText(str(self.horizontalSlider_c_2.value()))
         
-        self.plainTextEdit_x_2.textChanged.connect(self.textChanged)
-        self.plainTextEdit_y_2.textChanged.connect(self.textChanged)
-        self.plainTextEdit_x_3.textChanged.connect(self.textChanged)
-        self.plainTextEdit_y_3.textChanged.connect(self.textChanged)
-        self.plainTextEdit_c_1.textChanged.connect(self.textChanged)
-        self.plainTextEdit_c_2.textChanged.connect(self.textChanged)
+        self.horizontalSlider_x_2.valueChanged.connect(lambda: self.sliderChanged(self.plainTextEdit_x_2, self.horizontalSlider_x_2))
+        self.horizontalSlider_y_2.valueChanged.connect(lambda: self.sliderChanged(self.plainTextEdit_y_2, self.horizontalSlider_y_2))
+        self.horizontalSlider_x_3.valueChanged.connect(lambda: self.sliderChanged(self.plainTextEdit_x_3, self.horizontalSlider_x_3))
+        self.horizontalSlider_y_3.valueChanged.connect(lambda: self.sliderChanged(self.plainTextEdit_y_3, self.horizontalSlider_y_3))
+        self.horizontalSlider_c_1.valueChanged.connect(lambda: self.sliderChanged(self.plainTextEdit_c_1, self.horizontalSlider_c_1))
+        self.horizontalSlider_c_2.valueChanged.connect(lambda: self.sliderChanged(self.plainTextEdit_c_2, self.horizontalSlider_c_2))
 
-        # update Hyperbola and intersection points       
-        self.updateHyperbola()
-        self.analyticSolver()
+        self.plainTextEdit_x_2.editingFinished.connect(lambda: self.textChanged(self.plainTextEdit_x_2, self.horizontalSlider_x_2))
+        self.plainTextEdit_y_2.editingFinished.connect(lambda: self.textChanged(self.plainTextEdit_y_2, self.horizontalSlider_y_2))
+        self.plainTextEdit_x_3.editingFinished.connect(lambda: self.textChanged(self.plainTextEdit_x_3, self.horizontalSlider_x_3))
+        self.plainTextEdit_y_3.editingFinished.connect(lambda: self.textChanged(self.plainTextEdit_y_3, self.horizontalSlider_y_3))
+        self.plainTextEdit_c_1.editingFinished.connect(lambda: self.textChanged(self.plainTextEdit_c_1, self.horizontalSlider_c_1))
+        self.plainTextEdit_c_2.editingFinished.connect(lambda: self.textChanged(self.plainTextEdit_c_2, self.horizontalSlider_c_2))
 
-        # draw hyperbola and intersections points
-        self.drawCanvas()
+    def sliderChanged(self, plain_text, horizontal_slider):
 
-    def textChanged(self):
+        try:
+            plain_text.editingFinished.disconnect()
+
+            plain_text.setText(str(horizontal_slider.value()))
         
-        self.horizontalSlider_x_2.valueChanged.disconnect()
-        self.horizontalSlider_y_2.valueChanged.disconnect()
-        self.horizontalSlider_x_3.valueChanged.disconnect()
-        self.horizontalSlider_y_3.valueChanged.disconnect()
-        self.horizontalSlider_c_1.valueChanged.disconnect()
-        self.horizontalSlider_c_2.valueChanged.disconnect()
-        
-        self.horizontalSlider_x_2.setSliderPosition(int(self.plainTextEdit_x_2.toPlainText()))
-        self.horizontalSlider_y_2.setSliderPosition(int(self.plainTextEdit_y_2.toPlainText()))
-        self.horizontalSlider_x_3.setSliderPosition(int(self.plainTextEdit_x_3.toPlainText()))
-        self.horizontalSlider_y_3.setSliderPosition(int(self.plainTextEdit_y_3.toPlainText()))
-        self.horizontalSlider_c_1.setSliderPosition(int(self.plainTextEdit_c_1.toPlainText()))
-        self.horizontalSlider_c_2.setSliderPosition(int(self.plainTextEdit_c_2.toPlainText()))
+            # update Hyperbola and intersection points       
+            self.updateHyperbola()
+            self.analyticSolver()
 
-        self.horizontalSlider_x_2.valueChanged.connect(self.sliderChanged)
-        self.horizontalSlider_y_2.valueChanged.connect(self.sliderChanged)
-        self.horizontalSlider_x_3.valueChanged.connect(self.sliderChanged)
-        self.horizontalSlider_y_3.valueChanged.connect(self.sliderChanged)
-        self.horizontalSlider_c_1.valueChanged.connect(self.sliderChanged)
-        self.horizontalSlider_c_2.valueChanged.connect(self.sliderChanged)
-        
-        # update Hyperbola and intersection points       
-        self.updateHyperbola()
-        self.analyticSolver()
+            # draw hyperbola and intersections points
+            self.drawCanvas()
+        except:
+            pass
+    
+        plain_text.editingFinished.connect(lambda: self.textChanged(plain_text, horizontal_slider))
 
-        # draw hyperbola and intersections points
-        self.drawCanvas()
+
+    def textChanged(self, plaintext, horizontal_slider):
+
+        try:
+            horizontal_slider.valueChanged.disconnect()
+
+            horizontal_slider.setSliderPosition(int(plaintext.text()))
+            
+            # update Hyperbola and intersection points       
+            self.updateHyperbola()
+            self.analyticSolver()
+
+            # draw hyperbola and intersections points
+            self.drawCanvas()
+        except:
+            pass
+        
+        horizontal_slider.valueChanged.connect(lambda: self.sliderChanged(plaintext, horizontal_slider))
 
     def updateHyperbola(self):
         global test
