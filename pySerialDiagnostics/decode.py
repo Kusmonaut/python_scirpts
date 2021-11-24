@@ -4,7 +4,6 @@ from collections import OrderedDict, defaultdict
 from typing import Any, Dict, Optional
 
 import numpy as np
-from intranav.proto.inav_full_pb2 import SignalDiagnostics
 
 PRF_CONSTANT = 121.74
 

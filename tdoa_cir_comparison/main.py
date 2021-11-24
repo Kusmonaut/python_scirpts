@@ -46,6 +46,8 @@ from config import (
     MQTT_PORT,
     FLOOR_ID,
     TAG_ID,
+    PHYSICAL_TAG_POSITION_X,
+    PHYSICAL_TAG_POSITION_Y
 )
 
 from intranav.proto import Decoder
@@ -92,6 +94,9 @@ class Window(QMainWindow, QDialog):
         self.MplWidget_tdoa.canvas.axes.clear()
         self.MplWidget_cir.canvas.axes.clear()
 
+        self.MplWidget_tdoa.canvas.draw()
+        self.MplWidget_cir.canvas.draw()
+
         if 'tdoadebug' in tag_position[position]:
             hyperbolas = self.create_hyperbola(tag_position[position]['tdoadebug'])
 
@@ -110,21 +115,28 @@ class Window(QMainWindow, QDialog):
             if not node_diags:
                 logging.warning("nodes diag creation failed")
 
-            # 
             if node_positions:
                 self.color_matching(node_positions, node_diags)
+
+                if not node_diags:
+                    return
 
                 self.draw_on_diag_canvas(node_diags)
 
     def color_matching(self, node_positions, node_diags):
         for uid in node_positions:
             if uid != TAG_ID:
-                if uid in node_diags:
-                    node_diags[uid].update({'color': node_positions[uid]['color']})
-        pass
-        # for uid in node_diags:
-        #     if uid not in node_positions:
-        #         node_diags[uid].update({'color': 'g'})
+                try:
+                    if uid in node_diags:
+                        node_diags[uid].update({'color': node_positions[uid]['color']})
+                except Exception as ex:
+                    logging.error(f"error code: {ex}")
+        if node_diags:          
+            for uid in node_diags:
+                if 'color' not in node_diags[uid]:
+                    node_diags[uid].update({'color': 'g'})
+        else:
+            return
 
     def create_diagnostics(self, blink_collection):
         
@@ -191,6 +203,7 @@ class Window(QMainWindow, QDialog):
             self.MplWidget_cir.canvas.axes.title.set_text("tag_ID : " + node_diags[node]['tag_id'])
             self.MplWidget_cir.canvas.axes.plot(node_diags[node]['diag']['cir_amplitude'], label=node, color=node_diags[node]['color'], linestyle = '-' if node_diags[node]['prNlos'] < 1 else '--')
             self.MplWidget_cir.canvas.axes.axvline(x = node_diags[node]['diag']['pp_index'] - int(node_diags[node]['diag']['fp_index']) + 10, color=node_diags[node]['color'], linestyle='-.')
+            self.MplWidget_cir.canvas.axes.axhline(y = node_diags[node]['diag']['noise_threshold'], color=node_diags[node]['color'], linestyle='-.')
             self.MplWidget_cir.canvas.axes.scatter(y = node_diags[node]['diag']['fp_ampl3'], x = 11, marker='x', color=node_diags[node]['color'])
             self.MplWidget_cir.canvas.axes.scatter(y = node_diags[node]['diag']['fp_ampl2'], x = 12, marker='x', color=node_diags[node]['color'])
             self.MplWidget_cir.canvas.axes.scatter(y = node_diags[node]['diag']['fp_ampl1'], x = 13, marker='x', color=node_diags[node]['color'])
@@ -212,6 +225,8 @@ class Window(QMainWindow, QDialog):
 
         for uid in node_positions:
             self.MplWidget_tdoa.canvas.axes.scatter(node_positions[uid]['x'], node_positions[uid]['y'], zorder=10, s=100, color=node_positions[uid]['color'] , marker=node_positions[uid]['marker'] if node_positions[uid]['marker'] else 'o' )
+
+        self.MplWidget_tdoa.canvas.axes.scatter( PHYSICAL_TAG_POSITION_X, PHYSICAL_TAG_POSITION_Y, s=100, color= 'r', marker='+')
 
         for node in node_positions:
             self.MplWidget_tdoa.canvas.axes.annotate(
@@ -282,13 +297,17 @@ class Window(QMainWindow, QDialog):
     def update_horizontal_slider(self, dict_length: int):
         self.horizontalSlider.maximum = dict_length-1
         self.horizontalSlider.setRange(0, dict_length-1)
-        if self.horizontalSlider.value()+1 == dict_length-1:
-            self.horizontalSlider.setValue(self.horizontalSlider.maximum+1)
+        test = self.horizontalSlider.value()
+        if self.horizontalSlider.value() == self.horizontalSlider.maximum-1:
+            self.horizontalSlider.setValue(self.horizontalSlider.maximum)
 
     def on_tag_position(self, client: MQTTClient, userdata, message: MQTTMessage):
         global tag_position
         msg = json.loads(message.payload)
         tdoa_debug = {}
+
+        if "tdoadebug" not in msg:
+            return
 
         for tdoa in msg["tdoadebug"]:
             if 'raw_position' in tdoa:
@@ -333,9 +352,11 @@ class Window(QMainWindow, QDialog):
                                     tag_position[blink_count].update({ 'blink_collection': cache[tag_id].pop(seq_nr) })
                                     break
 
+        self.update_horizontal_slider(len(tag_position))
+
     def on_connect(self, client: MQTTClient, userdata, flags, rc):
-        client.subscribe("tag/"+TAG_ID+"/position/6")
-        client.message_callback_add("tag/"+TAG_ID+"/position/6", self.on_tag_position)
+        client.subscribe("tag/"+TAG_ID+"/position/"+str(FLOOR_ID))
+        client.message_callback_add("tag/"+TAG_ID+"/position/"+str(FLOOR_ID), self.on_tag_position)
 
         client.subscribe("node/+/tdoa")
         client.message_callback_add("node/+/tdoa", self.on_tdoa)
