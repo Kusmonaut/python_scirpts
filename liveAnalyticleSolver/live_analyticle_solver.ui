@@ -41,7 +41,14 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="plainTextEdit_x_2"/>
+         <widget class="QLineEdit" name="plainTextEdit_x_2">
+          <property name="maximumSize">
+           <size>
+            <width>40</width>
+            <height>16777215</height>
+           </size>
+          </property>
+         </widget>
         </item>
         <item>
          <widget class="QSlider" name="horizontalSlider_x_2">
@@ -80,7 +87,14 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="plainTextEdit_y_2"/>
+         <widget class="QLineEdit" name="plainTextEdit_y_2">
+          <property name="maximumSize">
+           <size>
+            <width>40</width>
+            <height>16777215</height>
+           </size>
+          </property>
+         </widget>
         </item>
         <item>
          <widget class="QSlider" name="horizontalSlider_y_2">
@@ -119,7 +133,14 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="plainTextEdit_x_3"/>
+         <widget class="QLineEdit" name="plainTextEdit_x_3">
+          <property name="maximumSize">
+           <size>
+            <width>40</width>
+            <height>16777215</height>
+           </size>
+          </property>
+         </widget>
         </item>
         <item>
          <widget class="QSlider" name="horizontalSlider_x_3">
@@ -158,7 +179,14 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="plainTextEdit_y_3"/>
+         <widget class="QLineEdit" name="plainTextEdit_y_3">
+          <property name="maximumSize">
+           <size>
+            <width>40</width>
+            <height>16777215</height>
+           </size>
+          </property>
+         </widget>
         </item>
         <item>
          <widget class="QSlider" name="horizontalSlider_y_3">
@@ -197,7 +225,14 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="plainTextEdit_c_1"/>
+         <widget class="QLineEdit" name="plainTextEdit_c_1">
+          <property name="maximumSize">
+           <size>
+            <width>40</width>
+            <height>16777215</height>
+           </size>
+          </property>
+         </widget>
         </item>
         <item>
          <widget class="QSlider" name="horizontalSlider_c_1">
@@ -236,7 +271,14 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="plainTextEdit_c_2"/>
+         <widget class="QLineEdit" name="plainTextEdit_c_2">
+          <property name="maximumSize">
+           <size>
+            <width>40</width>
+            <height>16777215</height>
+           </size>
+          </property>
+         </widget>
         </item>
         <item>
          <widget class="QSlider" name="horizontalSlider_c_2">

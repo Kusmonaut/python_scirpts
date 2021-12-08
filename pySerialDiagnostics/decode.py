@@ -1,12 +1,64 @@
+"""
+Diagnostics Decoder
+
+Copyright (c) IntraNav GmbH, 2017-2023. All rights reserved.
+Usage without permission or license is forbidden.
+If you want to use this product or license it, as it, please contact us.
+IntraNav GmbH, Germany, www.intranav.com, info@intranav.com
+"""
+
 import struct
+from typing import Any, Dict, List, Optional
 import logging
-from collections import OrderedDict, defaultdict
-from typing import Any, Dict, Optional
+
+from config import (
+    SOLVER_MIN_NUMBER_REPORTS
+)
 
 import numpy as np
 
 PRF_CONSTANT = 121.74
+DWT_BR_110K = 0 # 110 K
+DWT_BR_850K = 1 # 850 K
+DWT_BR_6M8 = 2  # 6180 K
 
+
+def create_quality_report(
+    diagnostics:Dict[str, Any], tag_id:int
+    ) -> Optional[Dict[str, Any]]:
+ 
+    node:dict = {"tag_id": tag_id}
+    node["diag"] = diagnostics
+
+    delta_peak = calc_peak_difference(diagnostics)
+
+    if not delta_peak:
+        return None
+
+    node["delta"] = delta_peak
+
+    pwr_level = calc_power_level(diagnostics)
+
+    if not pwr_level:
+        return None
+    
+    node["pwr_level"] = pwr_level
+
+    pwr_level_delta = calc_power_level_delta(node["pwr_level"])
+
+    if not pwr_level_delta:
+        return None
+        
+    node["pwr_level"]["delta"] = pwr_level_delta
+
+    if node["delta"] <= 3.3:
+        node["prNlos"] = 0
+    elif node["delta"] < 6 and node["delta"] > 3.3:       # TODO CREATE CONSTANTS FOR MAGIC NUMBERS
+        node["prNlos"] = 0.39178 * node["delta"] - 1.31719
+    else:
+        node["prNlos"] = 1 
+
+    return node
 
 def decode_diagnostics(payload: bytes, node_id: int, tag_id: int) -> Optional[Dict[str, Any]]:
     # NOTE: diagnostics data format rev 5 (DWT_DIAGNOSTIC_LOG_REV)
@@ -39,21 +91,21 @@ def decode_diagnostics(payload: bytes, node_id: int, tag_id: int) -> Optional[Di
     # 43-47 "drxconf_unknown"
     # 47-49 "pp_ampl"
     # 49-51 "noise_threshold"
-    # 51-66/51-193 "acc_memory" -> bytewise 14-142 bytes
+    # 51-193 "acc_memory" -> bytewise 142 bytes
 
     diag: Dict[str, Any] = {}
     diag["log"] = {"cir_real": [], "cir_imag": []}
     diag["cir_amplitude"] = []
     diag["raw_cir"] = []
 
-    DIAG_READ_SUPPORT = "<BL5s4hL5s5sHh5sHLhH"
-    DIAG_ACC_MEM = "<143B"
+    DIAG_READ_SUPPORT = "<BL5s4HL5s5sHh5sHHhH"
+    DIAG_ACC_MEM = "<4047B"
 
-    DIAG_HEADER_LENGTH = 51
-    DIAG_LENGTH = 194
+    DIAG_HEADER_LENGTH = 49
+    DIAG_LENGTH = 4096
     DWT_DIAGNOSTIC_LOG_REV_5 = 5
 
-    if len(payload) == DIAG_LENGTH:
+    if len(payload) == DIAG_LENGTH or len(payload) == DIAG_HEADER_LENGTH:
         # decode diagnostics
         (
             head,
@@ -70,7 +122,7 @@ def decode_diagnostics(payload: bytes, node_id: int, tag_id: int) -> Optional[Di
             diag["fp_ampl1"],
             raw_timestamp,
             diag["pp_index"],
-            carrier_recovery_integrator,
+            diag["rxpacc_nosat"],
             diag["pp_ampl"],
             diag["noise_threshold"]
         ) = struct.unpack(DIAG_READ_SUPPORT, payload[:DIAG_HEADER_LENGTH])
@@ -85,7 +137,7 @@ def decode_diagnostics(payload: bytes, node_id: int, tag_id: int) -> Optional[Di
         diag["RNG"] = int.from_bytes(rx_frame_info, "little") >> 23 & 0x01
         diag["RXPRFR"] = int.from_bytes(rx_frame_info, "little") >> 24 & 0x03
         diag["RXPSR"] = int.from_bytes(rx_frame_info, "little") >> 26 & 0x03
-        diag["RXPACC"] = int.from_bytes(rx_frame_info, "little") >> 28 & 0x1FFF
+        diag["RXPACC"] = int.from_bytes(rx_frame_info, "little") >> 28 & 0xFFF
 
         diag["RXTOFS"] = int.from_bytes(rx_time_tracking_offset, "little", signed=True) & 0x07FFFF
         diag["RSMPDEL"] = int.from_bytes(rx_time_tracking_offset, "little") >> 24 & 0xFF
@@ -94,22 +146,21 @@ def decode_diagnostics(payload: bytes, node_id: int, tag_id: int) -> Optional[Di
         diag["rx_timestamp"] = int.from_bytes(rx_timestamp, "little")
         diag["raw_timestamp"] = int.from_bytes(raw_timestamp, "little")
 
-        diag["drx_carr_int"] = float(carrier_recovery_integrator >> 17 & 0x0F) + float(
-            carrier_recovery_integrator & 0x1FFFF
-        ) / (0x1FFFF + 0x01)
-
         # check for diagnostics
         if head != DWT_DIAGNOSTIC_LOG_REV_5:
-            logging.warning(f"decoding of diagnostics header faild. [node_id: {node_id:016x}, tag_id: {tag_id:016x}]")
+            logging.warning(f"decoding of diagnostics header faild. [node_id={node_id:016x}, tag_id={tag_id:016x}]")
             return None
 
-        logging.info(f"diagnostics header decoded. [node_id: {node_id:016x}, tag_id: {tag_id:016x}]")
+        logging.debug(f"Diagnostics header decoded [node_id={node_id:016x}, tag_id={tag_id:016x}]")
 
         if len(payload) == DIAG_LENGTH:
             diag["raw_cir"] = struct.unpack(DIAG_ACC_MEM, payload[DIAG_HEADER_LENGTH:])
 
         # decode accumulator of diagnostics
         for i in range(1, len(diag["raw_cir"]), 4):
+            if i > 1280:
+                pass
+                t = 23
             diag["log"]["cir_real"].append(int.from_bytes(diag["raw_cir"][i : i + 2], "little", signed=True))
             diag["log"]["cir_imag"].append(int.from_bytes(diag["raw_cir"][i + 2 : i + 4], "little", signed=True))
             diag["cir_amplitude"].append(
@@ -127,27 +178,41 @@ def calc_power_level_delta(pwr_level: Dict[str, float]) -> float:
     # i.e. RX_POWER – FP_POWER, is less than 6dB the channel is likely to be
     # LOS, whilst if the difference is greater than 10dB the channel is likely
     # to be NLOS.
-
     return abs(pwr_level["fp_power"] - pwr_level["rx_power"])
 
 
-def get_best_node(node_quality, tag_id):
+def get_idle_ref_node(nodes):
+    
+    idle_Node:int = None 
+    to_kick:List = list()
 
-    # sort the node id due to the delta
-    sorted_nodes = dict(OrderedDict(sorted(node_quality.items(), key=lambda t: t[1])))
+    for uid in nodes:
+        if nodes[uid]['prNlos'] < 1:                    # TODO CREATE CONSTANT FOR MAGIC NUMBERS
+            if nodes[uid]['pwr_level']['delta'] < 10:   # TODO CREATE CONSTANT FOR MAGIC NUMBERS
 
-    nodes = list(sorted_nodes.keys())[:]
+                if not idle_Node:
+                    idle_Node = uid
+                    continue
 
-    for n in nodes:
-        logging.info(f"node_id: {n}, quality_index: {sorted_nodes[n]}")
+                if nodes[uid]['prNlos'] < nodes[idle_Node]['prNlos']:
+                    idle_Node = uid
+                else:
+                    if nodes[uid]['pwr_level']['delta'] < nodes[idle_Node]['pwr_level']['delta']:
+                        idle_Node = uid
+            else:
+                if len(nodes) - len(to_kick) > SOLVER_MIN_NUMBER_REPORTS:
+                    to_kick.append(uid)
+        else:
+            if len(nodes) - len(to_kick) > SOLVER_MIN_NUMBER_REPORTS:
+                to_kick.append(uid)
 
-    logging.debug(f"tag_id : {tag_id}")
+    return idle_Node, to_kick
 
-    # return the node with the smalest delta
-    return list(sorted_nodes.keys())[0]
+def calc_peak_difference(
+    diagnostics:Dict[str, float]
+) -> Optional[float] :
 
-
-def calc_peak_difference(diagnostics):
+    rc:float = float()
 
     if "fp_index" not in diagnostics:
         return None
@@ -159,24 +224,21 @@ def calc_peak_difference(diagnostics):
     return rc
 
 
-def get_qualified_node(power_level: dict) -> int:
-    delta = {}
-
-    # calculate the difference between the first path power level and receive singal power.
-    # The smaler the difference, the higher the chance that the connection between node and tag
-    # is line of sight.
-    for node_uid in power_level:
-        delta[node_uid] = float(np.abs(power_level[node_uid]["fp_power"] - power_level[node_uid]["rx_power"]))
-
-    # sort the node id due to the delta
-    sorted_nodes = dict(OrderedDict(sorted(delta.items(), key=lambda t: t[1])))
-
-    # return the node with the smalest delta
-    return list(sorted_nodes.keys())[0]
-
-
 def calc_power_level(diagnostics: dict) -> Optional[Dict[str, float]]:
     try:
+        if diagnostics["RXPACC"] == diagnostics["rxpacc_nosat"]:
+            if (diagnostics["RXBR"] == DWT_BR_110K):
+                diagnostics["RXPACC"] -= 10
+            elif (diagnostics["RXBR"] == DWT_BR_850K):
+                diagnostics["RXPACC"] -= 18
+            elif (diagnostics["RXBR"] == DWT_BR_6M8):
+                diagnostics["RXPACC"] -= 82
+
+
+        # TODO catch division by zero. Curently it ist the smartest solution I found
+        if diagnostics["RXPACC"] == 0:
+            diagnostics["RXPACC"] = 0.00001
+
         # calc first path power level
         # F_1 = First Path Amplitude (point 1) magnitude value reprted in the FP_AMPL1
         # F_2 = First Path Amplitude (point 2) magnitude value reprted in the FP_AMPL2
