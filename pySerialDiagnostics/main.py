@@ -35,19 +35,24 @@ def draw_on_diag_canvas(node_diags):
     ax.legend()
     plt.show()
 
-def plot_diagnostics(data_set):
+def plot_diagnostics(data_set, file_name):
     fig = plt.figure()
     ax = fig.add_subplot(1, 1, 1)
+    ax.set_title(file_name)
     ax.grid(True)
-    for diagnostics in data_set: 
-        ax.plot(diagnostics['cir_amplitude'])
+    for diagnostics in data_set:
+        test = (diagnostics['pp_index'] - int(diagnostics['fp_index'])) + 30
+        delta = diagnostics['pp_index'] - int(diagnostics['fp_index'])
+        # if diagnostics['fp_ampl1'] > 2500: # test > 35 and test < 45 and 
+        diagnostics['cir_amplitude'][int(diagnostics['fp_index'])-30:]
+        ax.plot(diagnostics['cir_amplitude'][int(diagnostics['fp_index'])-30:])
     pass
     plt.show()
 
 
-def open_diagnostics():
+def open_diagnostics(file_name):
     data = []
-    with open('data.json', 'r') as f:
+    with open(f'{file_name}.json', 'r') as f:
         data = f.read()
         new_data = data.replace('}{', '},{')
         json_data = json.loads(f'[{new_data}]')
@@ -57,8 +62,9 @@ def open_diagnostics():
     # draw_on_diag_canvas(line)
 
 if __name__ == "__main__":
-    data = open_diagnostics()
-    plot_diagnostics(data)
+    file_name = 'node_v2_office_v2'
+    data = open_diagnostics(file_name)
+    plot_diagnostics(data, file_name)
     ser = serial.Serial(port="COM4", baudrate=115200)
     counter = 0
     while(counter < 200):
