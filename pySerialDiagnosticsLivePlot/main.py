@@ -24,7 +24,7 @@ DIAG = {}
 
 class YourThreadName(QThread):
 
-    my_signal = pyqtSignal(dict)
+    my_signal = pyqtSignal(dict, str)
 
     def __init__(self):
         super(YourThreadName, self).__init__()
@@ -41,7 +41,7 @@ class YourThreadName(QThread):
                 if buffer:
                     print(buffer)
                     DIAG = decode_diagnostics(buffer, 21312, 23123)
-                    self.my_signal.emit(DIAG)
+                    self.my_signal.emit(DIAG, "live Plotter")
 
 
 class Window(QMainWindow, QDialog):
@@ -53,11 +53,8 @@ class Window(QMainWindow, QDialog):
         self.myThread.start()
         # self.myThread.run()
         if self.myThread.isRunning():
-            self.myThread.my_signal.connect(self.test)
+            self.myThread.my_signal.connect(self.plot_diagnostics)
         pass
-    
-    def test(self, bla):
-        self.plot_diagnostics(bla, 'test')
 
     def plot_diagnostics(self, diagnostics, file_name):
         # fig = plt.figure()
@@ -73,10 +70,11 @@ class Window(QMainWindow, QDialog):
         else:
             bad_signal += 1
 
-        # if diagnostics['fp_ampl1'] < 3000: # test > 35 and test < 45 and 
+        # if diagnostics['fp_ampl1'] < 3000: # test > 35 and test < 45 and
+
         diagnostics['cir_amplitude'][int(diagnostics['fp_index'])-30:]
         self.MplWidget.canvas.axes.clear()
-        self.MplWidget.canvas.axes.plot(diagnostics['cir_amplitude'][int(diagnostics['fp_index'])-30:])
+        self.MplWidget.canvas.axes.plot(diagnostics['cir_amplitude'][int(diagnostics['fp_index'])-30:], linestyle= '-' if report['prNlos'] < 1 else '-.' )
         self.MplWidget.canvas.draw()
         
         # ax.set_title(f'{file_name}, bad_signal = {bad_signal}, good_signal = {good_signal}')
