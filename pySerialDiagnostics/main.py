@@ -4,19 +4,12 @@ check tag positioning
 """
 
 import json
-import logging
-import os
-import sys
-import numpy as np
-from time import time
-import csv
-
-from serial.serialutil import to_bytes
 
 from decode import *
 import serial
 import matplotlib.pyplot as plt
 
+NUMBER_OF_MEASURMENTS = 100
 
 def draw_on_diag_canvas(node_diags):
 
@@ -38,15 +31,27 @@ def draw_on_diag_canvas(node_diags):
 def plot_diagnostics(data_set, file_name):
     fig = plt.figure()
     ax = fig.add_subplot(1, 1, 1)
-    ax.set_title(file_name)
     ax.grid(True)
-    for diagnostics in data_set:
+    bad_signal = 0
+    good_signal = 0
+    for i, diagnostics in enumerate(data_set):
+
+        report = create_quality_report(diagnostics, 'test')
+
+        if report['prNlos'] < 1:
+            good_signal += 1
+        else:
+            bad_signal += 1
+
         test = (diagnostics['pp_index'] - int(diagnostics['fp_index'])) + 30
         delta = diagnostics['pp_index'] - int(diagnostics['fp_index'])
-        # if diagnostics['fp_ampl1'] > 2500: # test > 35 and test < 45 and 
+        # if diagnostics['fp_ampl1'] < 3000: # test > 35 and test < 45 and 
         diagnostics['cir_amplitude'][int(diagnostics['fp_index'])-30:]
         ax.plot(diagnostics['cir_amplitude'][int(diagnostics['fp_index'])-30:])
-    pass
+        if i > 86:
+            break
+    
+    ax.set_title(f'{file_name}, bad_signal = {bad_signal}, good_signal = {good_signal}')
     plt.show()
 
 
@@ -57,17 +62,16 @@ def open_diagnostics(file_name):
         new_data = data.replace('}{', '},{')
         json_data = json.loads(f'[{new_data}]')
     return json_data
-    
-#   for d in data:
-    # draw_on_diag_canvas(line)
 
 if __name__ == "__main__":
-    file_name = 'node_v2_office_v2'
+    file_name = 'office_offen_stehend_mit_metallwand'
     data = open_diagnostics(file_name)
     plot_diagnostics(data, file_name)
+
     ser = serial.Serial(port="COM4", baudrate=115200)
+
     counter = 0
-    while(counter < 200):
+    while(counter < NUMBER_OF_MEASURMENTS):
         if (ser.readable()):
             buffer = ser.read_all()
 
@@ -75,6 +79,5 @@ if __name__ == "__main__":
                 print(buffer)
                 diag = decode_diagnostics(buffer, 21312, 23123)
                 with open('data.json', 'a') as f:
-                    json.dump(diag, f) #, f, indent=2, indent=4
-                # if diag:
-                #     draw_on_diag_canvas(diag)
+                    counter += 1
+                    json.dump(diag, f)
