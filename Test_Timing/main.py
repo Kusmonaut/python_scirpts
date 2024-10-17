@@ -1,80 +1,24 @@
 import time
-import threading
 import json
 import base64
 from datetime import datetime
+from queue import Queue
 
 import networkx as nx
 from intranav.proto.inav_le_pb2 import GardenerReport
 
+expire_queue= Queue()
 empty_on_line_tree = json.dumps(nx.node_link_data(nx.Graph())).encode("utf-8")
 graph_seq = -1
 filename_track_recording = datetime.now().strftime("splitter_data_%Y-%m-%d_%H-%M-%S.json")
 sync_tree_gardener = None
 
-class MultiTTLCache:
-    def __init__(self):
-        self.cache = {}
-        self.lock = threading.Lock()
-    
-    def set(self, key, value, ttl):
-        """Fügt einen Eintrag mit einer individuellen TTL basierend auf `time.monotonic()` hinzu."""
-        expiration_time = time.perf_counter() + ttl
-        with self.lock:
-            self.cache[key] = (value, expiration_time)
-        print(f"Daten in Cache eingefügt: {key}, TTL: {ttl} Sekunden")
-    
-    def get_expired_entries(self):
-        """Gibt eine Liste der abgelaufenen Einträge zurück und entfernt sie."""
-        with self.lock:
-            expired_keys = [(key, (value, expiration_time)) for key, (value, expiration_time) in self.cache.items() if time.perf_counter() >= expiration_time]
-            for key in expired_keys:
-                del self.cache[key[0]]
-        return expired_keys
-
-# Beispiel-Funktion, die die Daten verarbeitet
-def sende_daten(daten):
-    print(f"Daten gesendet: {daten}")
-
-# Consumer-Thread, der die abgelaufenen Daten verarbeitet
-def consumer(cache):
-    global sync_tree_gardener
-    while True:
-        expired_entries = cache.get_expired_entries()
-        for key, values in expired_entries:
-            if "sync_tree_gardener" in values[0]:
-                sync_tree_gardener = values["sync_tree_gardener"]
-            # sende_daten(key)
-            save_splitter_data(values[0]['payload'], values[0]['node_uid'], sync_tree_gardener)
-
-        time_to_sleep = 0.0001  # Standard-Schlafzeit, wenn kein Eintrag im Cache ist
-        # Schlafe bis zum nächsten Ablauf
-        time.sleep(time_to_sleep)
-
-timestamp_set = {}
-# Producer-Thread, der mehrere Daten mit unterschiedlichen TTLs in den Cache einfügt
-def producer(cache):
-
-    filename = "splitter_data_2024-10-15_17-42-33.json"
-    messages = load_splitter_data(filename)
-    ttl = 0
-    start_time = 0
-    
-    for daten in messages:
-        if start_time == 0:
-            start_time = daten["timestamp"]
-        else:
-            ttl = daten["timestamp"] - start_time
-        key = daten["timestamp"]
-        cache.set(key, daten, ttl)  # Füge mehrere Daten mit TTL in den Cache ein
-        timestamp_set[key] = time.perf_counter()
-        time.sleep(0.0003)  # Simuliere eine Verzögerung zwischen den Einfügungen
 
 
 def save_splitter_data(payload, node_uid, sync_tree_gardener):
     global graph_seq
     data = {}
-    data["timestamp"] = time.perf_counter()
+    data["timestamp"] = time.time()
     data["node_uid"] = node_uid
     data["payload"] = base64.b64encode(payload).decode('utf-8')
     if sync_tree_gardener:
@@ -107,25 +51,48 @@ def load_splitter_data(filename):
             messages.append(message)
     return messages
 
+def create_test_file():
 
-# Cache erstellen
-cache = MultiTTLCache()
+    current_time = time.time()
+    node_uid = 0
 
-# Starten der Threads
-consumer_thread = threading.Thread(target=consumer, args=(cache,))
-producer_thread = threading.Thread(target=producer, args=(cache,))
+    current_time = int(current_time)
+    payload = b"234234dfsadr234"
+    for i in range(100000):
+        data = {}
+        data["timestamp"] = current_time + i * 0.001
+        data["node_uid"] = node_uid + i
+        data["payload"] = base64.b64encode(payload).decode('utf-8')
+        with open(filename_track_recording, 'a') as f:
+            f.write(json.dumps(data) + "\n")
 
-# Threads als Daemon setzen, damit sie beendet werden, wenn das Hauptprogramm endet
-consumer_thread.daemon = True
-producer_thread.daemon = True
+filename = "splitter_data_2024-10-17_15-21-35.json"
+messages = load_splitter_data(filename)
 
-# Threads starten
-producer_thread.start()
-consumer_thread.start()
+delta = 0
+start_time = 0.0
+save_for_print = []
+current_time = time.time()
 
-# Warten, bis der Producer fertig ist
-producer_thread.join()
+for data in messages:
+    if delta == 0:
+        delta = (current_time + 3) - data["timestamp"]
+    intervall = data["timestamp"] + delta
+    expire_queue.put((data, intervall))   
+    
 
-print("Alle Daten wurden in den Cache eingefügt und verarbeitet.")
-while True:
-    pass
+while not expire_queue.empty():
+
+    data, intervall = expire_queue.get()
+
+    while intervall > time.time():
+        pass
+    save_splitter_data(data["payload"], data["node_uid"], sync_tree_gardener)
+    if start_time == 0.0:
+        start_time = time.time()
+    time_d = time.time() - start_time
+    node_id = data["node_uid"]
+    save_for_print.append((node_id, time_d))
+
+for node_id, time_d in save_for_print:
+    print(f"{node_id} \t, {time_d:.6f}")
